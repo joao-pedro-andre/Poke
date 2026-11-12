@@ -37,7 +37,7 @@ export function renderArena(app, storage, toast) {
         <label class="form-group">Dificuldade<select class="field" id="arenaDifficulty"><option value="normal">Treinador</option><option value="hard">Líder de ginásio</option></select></label></div>
         <button class="btn btn-primary" id="startBattle">Iniciar batalha →</button>
       ` : `<div class="empty-state">Você ainda não tem baralhos. Crie um em <a class="text-link" href="#baralhos">Meus baralhos</a> para entrar na Arena.</div>`}</div>
-      <div class="arena-rules"><h3>Como funciona</h3><ul><li>Cada lado começa com três Pokémon.</li><li>Escolha um Pokémon ativo e use um dos ataques disponíveis na carta.</li><li>O dano é aplicado aos pontos de vida do oponente.</li><li>Vence quem nocautear os três Pokémon adversários.</li></ul><small>Modo de batalha simplificado, inspirado no TCG; não representa todas as regras oficiais, energias ou condições especiais.</small></div>`;
+      <div class="arena-rules"><h3>Como funciona</h3><ul><li>Cada lado usa até três Pokémon.</li><li>Escolha o Pokémon ativo, ataque ou troque para outro Pokémon disponível.</li><li>O dano é aplicado aos pontos de vida do oponente.</li><li>Vence quem nocautear os três Pokémon adversários.</li></ul><small>Modo de batalha simplificado, inspirado no TCG; não representa todas as regras oficiais, energias ou condições especiais.</small></div>`;
     $("#startBattle", content)?.addEventListener("click", startBattle);
   }
 
@@ -76,11 +76,24 @@ export function renderArena(app, storage, toast) {
     if(!card?.id || !card?.name || !Number.isFinite(hp) || hp<=0 || !card.image) return null;
     const attacks=(card.attacks||[]).map(attack=>({name:attack.name||"Ataque",damage:parseDamage(attack.damage),text:attack.text||"",cost:Array.isArray(attack.cost)?attack.cost:[]})).slice(0,4);
     if(!attacks.length) attacks.push({name:"Investida",damage:20,text:"Ataque básico",cost:[]});
-    return {id:card.id,name:card.name,image:card.image,hp,maxHp:hp,attacks,weaknesses:card.weaknesses||[],resistances:card.resistances||[]};
+    return {id:card.id,name:card.name,image:card.image,hp,maxHp:hp,attacks,types:card.types||[],weaknesses:card.weaknesses||[],resistances:card.resistances||[]};
   }
   function parseDamage(value) {
     const match=String(value||"20").replace(/,/g,"").match(/\d+/);
     return Math.max(10,Math.min(250,Number(match?.[0]||20)));
+  }
+  function calculateDamage(attacker, defender, baseDamage) {
+    const type=attacker.types?.[0];
+    if(!type) return baseDamage;
+    const weakness=(defender.weaknesses||[]).find(item=>item.type===type);
+    if(weakness) {
+      const value=String(weakness.value||"");
+      if(/×2|x2/i.test(value)) return baseDamage*2;
+      return baseDamage+parseDamage(value);
+    }
+    const resistance=(defender.resistances||[]).find(item=>item.type===type);
+    if(resistance) return Math.max(10,baseDamage-parseDamage(resistance.value));
+    return baseDamage;
   }
   async function buildOpponent(playerCards,difficulty) {
     try {
@@ -125,8 +138,9 @@ export function renderArena(app, storage, toast) {
     content.querySelectorAll("[data-attack]").forEach(button=>button.onclick=()=>{
       const attack=p?.attacks[Number(button.dataset.attack)];
       if(!attack||!c||state.over||state.turn!=="player")return;
-      c.hp=Math.max(0,c.hp-attack.damage);
-      state.log.push(`${p.name} usou ${attack.name}: ${attack.damage} de dano em ${c.name}.`);
+      const damage=calculateDamage(p,c,attack.damage);
+      c.hp=Math.max(0,c.hp-damage);
+      state.log.push(`${p.name} usou ${attack.name}: ${damage} de dano em ${c.name}.`);
       if(c.hp<=0){state.log.push(`${c.name} foi nocauteado!`);state.cpuActive=state.cpu.findIndex(x=>x.hp>0);}
       if(state.cpu.every(x=>x.hp<=0)){drawBattle(state);return;}
       runCpuTurn(state);
@@ -138,7 +152,8 @@ export function renderArena(app, storage, toast) {
     const target=state.player[state.playerActive], attacker=state.cpu[state.cpuActive];
     if(!attacker||!target){state.turn="player";drawBattle(state);return;}
     const attack=attacker.attacks.reduce((best,current)=>current.damage>best.damage?current:best,attacker.attacks[0]);
-    const damage=Math.max(10,attack.damage+(state.difficulty==="hard"?10:0));
+    const baseDamage=Math.max(10,attack.damage+(state.difficulty==="hard"?10:0));
+    const damage=calculateDamage(attacker,target,baseDamage);
     target.hp=Math.max(0,target.hp-damage);
     state.log.push(`IA: ${attacker.name} usou ${attack.name} e causou ${damage} de dano.`);
     if(target.hp<=0){
