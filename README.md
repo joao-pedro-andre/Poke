@@ -1,36 +1,44 @@
-# PokéVault — Pokémon TCG Platform
+# PokéVault — Pokémon TCG
 
-Aplicação frontend responsiva em HTML5, CSS3 e JavaScript puro (ES Modules).
+Aplicação web responsiva em HTML5, CSS3 e JavaScript puro (ES Modules), com identidade visual inspirada em consoles portáteis clássicos.
+
+## Funcionalidades disponíveis nesta versão
+- Dashboard com indicadores e atalhos.
+- Pokédex conectada à PokéAPI, com paginação, busca e filtro por tipo.
+- Catálogo Pokémon TCG com busca, filtros e paginação.
+- Visualização detalhada de Pokémon e cartas.
+- Consulta dos valores de preço que a API disponibiliza, identificando a fonte e sem presumir que sejam cotações em reais.
+- Coleção local com quantidades, favoritos, pesquisa, exportação e importação de backup JSON.
+- Construtor simples de baralhos, com inclusão e remoção de cartas.
+- Perfil local do treinador.
+- Marketplace demonstrativo com criação, pesquisa, ordenação e exclusão de anúncios.
+- Tema claro/escuro e layout responsivo.
 
 ## Executar localmente
-1. Extraia a pasta do projeto.
-2. Abra a pasta no VS Code.
-3. Inicie um servidor estático (ex.: extensão Live Server).
-4. Acesse o endereço local exibido pelo servidor.
+1. Abra a pasta do projeto no VS Code.
+2. Inicie um servidor estático (por exemplo, Live Server).
+3. Acesse o endereço local exibido pelo servidor.
 
-> Não abra `index.html` diretamente por `file://`, pois os módulos ES podem ser bloqueados pelo navegador.
-
-## Funcionalidades desta versão
-- Dashboard com atalhos e indicadores da coleção local.
-- Pokédex conectada à PokéAPI, com busca por nome/número e filtro por tipo.
-- Catálogo de cartas Pokémon TCG com busca e filtros por tipo/raridade.
-- Detalhes de Pokémon e cartas.
-- Consulta de preços apenas quando a fonte retorna dados.
-- Coleção pessoal com quantidade, favoritos e remoção.
-- Marketplace demonstrativo com criação, busca, ordenação e exclusão de anúncios.
-- Tema claro/escuro persistido no LocalStorage.
-- Layout responsivo para desktop e dispositivos móveis.
+Não abra `index.html` diretamente por `file://`, pois os módulos ES podem ser bloqueados pelo navegador.
 
 ## APIs
 - PokéAPI: https://pokeapi.co/
 - Pokémon TCG API: https://pokemontcg.io/
 
-O projeto não inclui chave privada. Se a API de cartas passar a exigir chave ou limitar requisições, configure um proxy/backend; nunca coloque segredos no JavaScript do navegador.
+A disponibilidade e os limites de requisição dependem dos serviços externos. Não coloque chaves privadas no JavaScript do navegador.
 
-## Persistência e segurança
-LocalStorage é usado apenas para preferências, coleção e anúncios de demonstração no dispositivo atual. Não armazene senhas ou dados sensíveis nele.
+## Limitações importantes
+Esta versão é funcional como aplicação frontend individual, mas ainda não é uma plataforma multiusuário. Perfil, coleção, baralhos e anúncios são armazenados no navegador atual.
 
-Login seguro, papéis administrativos, fórum multiusuário, sincronização, upload privado e pagamentos exigem backend. Para a próxima etapa, recomenda-se Supabase Auth + PostgreSQL + Storage + Row Level Security. Valide permissões no servidor, não apenas ocultando botões no frontend.
+Os seguintes recursos ainda exigem backend e configuração de serviços:
+- Cadastro, login e recuperação de senha seguros.
+- Perfis e coleções sincronizados entre dispositivos.
+- Marketplace público, chat entre usuários, avaliações e denúncias.
+- Pagamentos, pedidos e histórico de transações.
+- Torneios/eventos com inscrições e resultados oficiais.
+- Painel administrativo, moderação e permissões por função.
+
+Para isso, recomenda-se integrar Supabase Auth, PostgreSQL, Storage e Row Level Security, com políticas e validações no servidor. Nenhum pagamento ou autenticação real é simulado nesta versão.
 
 ## Estrutura
 ```text
@@ -46,5 +54,4 @@ pokevault/
     └── storage.js
 ```
 
-## Observações
 PokéVault é um projeto independente e não é afiliado à Nintendo, Creatures ou The Pokémon Company. Pokémon e suas marcas pertencem aos respectivos titulares.
