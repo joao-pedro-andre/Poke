@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#26352a">
+  <meta name="description" content="PokéVault — explore cartas, descubra Pokémon e organize sua coleção.">
+  <title>PokéVault — Pokémon TCG</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="#inicio" aria-label="PokéVault início">
+        <span class="brand-mark">◉</span><span>Poké<span class="brand-accent">Vault</span></span>
+      </a>
+      <div class="side-label">MENU PRINCIPAL</div>
+      <nav class="side-nav" aria-label="Navegação principal">
+        <a href="#inicio" data-route="inicio" class="nav-link active"><span>⌂</span> Visão geral</a>
+        <a href="#pokedex" data-route="pokedex" class="nav-link"><span>◉</span> Pokédex</a>
+        <a href="#cartas" data-route="cartas" class="nav-link"><span>▧</span> Cartas TCG</a>
+        <a href="#precos" data-route="precos" class="nav-link"><span>↗</span> Preços</a>
+        <a href="#colecao" data-route="colecao" class="nav-link"><span>▤</span> Minha coleção</a>
+        <a href="#mercado" data-route="mercado" class="nav-link"><span>⇄</span> Marketplace</a>
+      </nav>
+      <div class="side-label side-label-bottom">SUA CONTA</div>
+      <nav class="side-nav">
+        <a href="#sobre" data-route="sobre" class="nav-link"><span>ⓘ</span> Sobre a plataforma</a>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="mini-profile"><div class="avatar">P</div><div><strong>Treinador</strong><small>Modo local</small></div><span class="online-dot"></span></div>
+        <button class="theme-toggle" id="themeToggle"><span>◐</span> Alternar tema <kbd>☼</kbd></button>
+      </div>
+    </aside>
+    <main class="main-area">
+      <header class="topbar">
+        <button class="mobile-menu icon-button" id="mobileMenu" aria-label="Abrir menu">☰</button>
+        <div class="breadcrumb"><span>PokéVault</span><b>/</b><strong id="pageName">Visão geral</strong></div>
+        <div class="top-actions">
+          <label class="global-search"><span>⌕</span><input id="globalSearch" type="search" placeholder="Busque Pokémon ou cartas..." autocomplete="off"><kbd>⌘ K</kbd></label>
+          <button class="icon-button" id="topTheme" aria-label="Alternar tema">◐</button>
+        </div>
+      </header>
+      <div id="app" class="page-content"><div class="loading-state"><div class="loader"></div><p>Preparando sua PokéVault...</p></div></div>
+      <footer class="footer"><span>PokéVault © 2026</span><span>Projeto independente, não afiliado à Nintendo, Creatures ou The Pokémon Company.</span></footer>
+    </main>
+  </div>
+  <div id="toastRegion" class="toast-region" aria-live="polite"></div>
+  <div id="modalRoot"></div>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
