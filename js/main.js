@@ -1,4 +1,4 @@
-import { getPokemonPage, getPokemonDetails, getCards, getCardById, formatPrice } from "./api.js";
+import { getPokemonPage, getPokemonDetails, getCards, getCardById } from "./api.js";
 import { storage } from "./storage.js";
 
 const app = document.querySelector("#app");
@@ -37,8 +37,7 @@ function pokemonCard(p) {
   return `<article class="pokemon-card"><div class="pokemon-art"><span class="pokemon-number">#${String(p.id).padStart(4,"0")}</span><img loading="lazy" src="${esc(p.image)}" alt="${esc(p.name)}" onerror="this.style.opacity='.2'"></div><div class="pokemon-info"><h3>${esc(title(p.name))}</h3><div class="tag-row">${(p.types || []).map(type => `<span class="type-tag">${esc(title(type))}</span>`).join("")}</div><button class="text-link" data-pokemon="${esc(p.name)}">Ver detalhes →</button></div></article>`;
 }
 function cardTile(card) {
-  const price = formatPrice(card);
-  return `<article class="tcg-card"><div class="tcg-image"><img loading="lazy" src="${esc(card.image)}" alt="${esc(card.name)}"></div><div class="tcg-info"><h3>${esc(card.name)}</h3><p class="card-meta">${esc(card.set)} · #${esc(card.number)}</p><span class="rarity-tag">${esc(card.rarity)}</span><div class="tcg-bottom"><strong>${price !== null ? money(price) : "Sem cotação"}</strong><div class="card-actions"><button class="btn btn-soft btn-small" data-add-card="${esc(card.id)}" title="Adicionar à coleção">＋</button><button class="btn btn-soft btn-small" data-detail-card="${esc(card.id)}">Ver</button></div></div></div></article>`;
+  return `<article class="tcg-card"><div class="tcg-image"><img loading="lazy" src="${esc(card.image)}" alt="${esc(card.name)}"></div><div class="tcg-info"><h3>${esc(card.name)}</h3><p class="card-meta">${esc(card.set)} · #${esc(card.number)}</p><span class="rarity-tag">${esc(card.rarity)}</span><div class="tcg-bottom"><div class="card-actions"><button class="btn btn-soft btn-small" data-add-card="${esc(card.id)}" title="Adicionar à coleção">＋</button><button class="btn btn-soft btn-small" data-detail-card="${esc(card.id)}">Ver</button></div></div></div></article>`;
 }
 function empty(message) { return `<div class="empty-state">${esc(message)}</div>`; }
 
@@ -143,25 +142,6 @@ function collection() {
   };
 }
 
-function prices() {
-  setPage("Preços");
-  app.innerHTML = header("MERCADO TCG", "Consulta de preços", "Consulte valores disponíveis nas fontes conectadas.") +
-    `<div class="notice">A API pode retornar valores internacionais em moedas diferentes. Eles são referências externas, não cotações garantidas em reais nem preços do mercado brasileiro.</div><div class="filter-panel"><input class="field" id="priceSearch" placeholder="Nome da carta"><button class="btn btn-primary" id="priceSearchBtn">Consultar</button></div><div id="priceResults"></div>`;
-  const search = async () => {
-    const query = $("#priceSearch").value.trim(); if (!query) return toast("Digite o nome de uma carta.");
-    $("#priceResults").textContent = "Consultando…";
-    try {
-      const data = await getCards({ pageSize: 20, q: query });
-      $("#priceResults").innerHTML = data.results.map(card => {
-        const value = formatPrice(card);
-        return `<div class="panel"><strong>${esc(card.name)} — ${esc(card.set)}</strong><p>${value !== null ? `Valor informado: ${value} (moeda da fonte)` : "Sem cotação disponível"} · Fonte: ${esc(card.priceSource || "não informada")}</p><button class="btn btn-soft btn-small" data-detail-card="${esc(card.id)}">Ver carta</button></div>`;
-      }).join("") || empty("Nenhuma carta encontrada.");
-    } catch (error) { $("#priceResults").textContent = error.message; }
-  };
-  $("#priceSearchBtn").onclick = search;
-  $("#priceSearch").onkeydown = event => { if (event.key === "Enter") search(); };
-}
-
 function market() {
   setPage("Marketplace");
   app.innerHTML = header("NEGOCIAÇÃO", "Marketplace", "Crie e organize anúncios demonstrativos neste dispositivo.", '<button class="btn btn-primary" id="newListing">＋ Criar anúncio</button>') +
@@ -233,7 +213,7 @@ async function showCard(id) {
     const card = await getCardById(id); if (token !== routeToken) return;
     setPage("Detalhes da carta");
     app.innerHTML = header("CARTA TCG", card.name, card.set) +
-      `<div class="detail-layout panel"><img class="detail-image" src="${esc(card.image)}" alt="${esc(card.name)}"><div><h2>${esc(card.name)}</h2><p>${esc(card.set)} · #${esc(card.number)}</p><p>Raridade: ${esc(card.rarity)}</p><p>HP: ${esc(card.hp)}</p><p>Artista: ${esc(card.artist)}</p><p>Preço informado: ${formatPrice(card) ?? "Não disponível"} (${esc(card.priceSource || "sem fonte")})</p><button class="btn btn-primary" data-add-card="${esc(card.id)}">＋ Adicionar à coleção</button> <a class="btn btn-secondary" href="#cartas">Voltar ao catálogo</a></div></div>`;
+      `<div class="detail-layout panel"><img class="detail-image" src="${esc(card.image)}" alt="${esc(card.name)}"><div><h2>${esc(card.name)}</h2><p>${esc(card.set)} · #${esc(card.number)}</p><p>Raridade: ${esc(card.rarity)}</p><p>HP: ${esc(card.hp)}</p><p>Artista: ${esc(card.artist)}</p><button class="btn btn-primary" data-add-card="${esc(card.id)}">＋ Adicionar à coleção</button> <a class="btn btn-secondary" href="#cartas">Voltar ao catálogo</a></div></div>`;
   } catch (error) { if (token === routeToken) app.innerHTML = empty(error.message) + '<a class="btn btn-secondary" href="#cartas">Voltar</a>'; }
 }
 function addCollection(card) {
@@ -253,7 +233,7 @@ function navigate() {
   const route = location.hash.slice(1) || "inicio";
   document.querySelectorAll("[data-route]").forEach(link => link.classList.toggle("active", link.dataset.route === route));
   $("#sidebar")?.classList.remove("open");
-  const routes = { inicio: home, pokedex, cartas: cards, precos: prices, colecao: collection, mercado: market, baralhos: decks, perfil: profile, sobre: about };
+  const routes = { inicio: home, pokedex, cartas: cards, colecao: collection, mercado: market, baralhos: decks, perfil: profile, sobre: about };
   (routes[route] || home)();
 }
 document.addEventListener("click", async event => {
