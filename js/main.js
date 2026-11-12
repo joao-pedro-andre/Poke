@@ -1,5 +1,6 @@
 import { getPokemonPage, getPokemonDetails, getCards, getCardById } from "./api.js";
 import { storage } from "./storage.js";
+import { renderArena } from "./arena.js";
 
 const app = document.querySelector("#app");
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -233,7 +234,7 @@ function navigate() {
   const route = location.hash.slice(1) || "inicio";
   document.querySelectorAll("[data-route]").forEach(link => link.classList.toggle("active", link.dataset.route === route));
   $("#sidebar")?.classList.remove("open");
-  const routes = { inicio: home, pokedex, cartas: cards, colecao: collection, mercado: market, baralhos: decks, perfil: profile, sobre: about };
+  const routes = { inicio: home, pokedex, cartas: cards, colecao: collection, mercado: market, baralhos: decks, arena: () => renderArena(app, storage, toast), perfil: profile, sobre: about };
   (routes[route] || home)();
 }
 document.addEventListener("click", async event => {
