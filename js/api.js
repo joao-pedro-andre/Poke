@@ -80,7 +80,7 @@ export async function getPokemonDetails(name) {
 }
 
 function escapeQuery(value) {
-  return String(value).replace(/[\\{}[\\]]/g, "").replace(/"/g, '\\"').trim();
+  return String(value).replace(/[{}[\\]\\\\]/g, "").replace(/"/g, '\\\"').trim();
 }
 
 export async function getCards({ page = 1, pageSize = 24, q = "", type = "", rarity = "", set = "" } = {}) {
