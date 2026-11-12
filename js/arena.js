@@ -1,4 +1,4 @@
-import { getCardById } from "./api.js";
+import { getCardById, getCards } from "./api.js";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const esc = value => String(value ?? "").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
@@ -44,83 +44,110 @@ export function renderArena(app, storage, toast) {
   async function startBattle() {
     const deck = storage.getDecks().find(item => item.id === $("#arenaDeck", content).value);
     if (!deck?.cards?.length) return toast("Adicione cartas ao baralho antes de jogar.");
-    const selected = deck.cards.slice(0, 3);
+    const selected = deck.cards.filter(item => Number(item.qty)>0 && (!item.supertype || item.supertype==="Pokémon")).slice(0,30);
     const difficulty = $("#arenaDifficulty", content).value;
-    const start = $("#startBattle", content); start.disabled = true; start.textContent = "Preparando cartas…";
+    const start = $("#startBattle", content); start.disabled = true; start.textContent = "Preparando seu time…";
     try {
-      const playerCards = await Promise.all(selected.map(async item => {
-        const card = await getCardById(item.id);
-        return makeFighter(card);
-      }));
-      if (!playerCards.length) throw new Error("Não foi possível carregar as cartas do baralho.");
-      const opponentCards = await buildOpponent(playerCards, difficulty);
-      const state = { player: playerCards, cpu: opponentCards, playerActive: 0, cpuActive: 0, turn: "player", over: false, log: ["A batalha começou! Seu turno."], difficulty };
+      const playerCards = [];
+      let failed = 0;
+      for(let index=0;index<selected.length && playerCards.length<3;index+=4) {
+        const batch=await Promise.allSettled(selected.slice(index,index+4).map(async item => {
+          const details=item.hp && item.image ? item : await getCardById(item.id);
+          return makeFighter(details);
+        }));
+        for(const result of batch) {
+          if(result.status==="fulfilled" && result.value) playerCards.push(result.value);
+          else failed++;
+        }
+      }
+      if(!playerCards.length) throw new Error("Não encontrei Pokémon válidos nesse baralho. Adicione cartas de Pokémon com HP e imagem.");
+      if(failed) toast(`${failed} carta(s) foram ignoradas porque não possuem dados suficientes ou falharam na API.`);
+      const opponentCards=await buildOpponent(playerCards,difficulty);
+      const state={player:playerCards.slice(0,3),cpu:opponentCards,playerActive:0,cpuActive:0,turn:"player",over:false,log:["A batalha começou! Escolha um ataque ou troque seu Pokémon ativo."],difficulty,turnNumber:1};
       drawBattle(state);
-    } catch (error) {
+    } catch(error) {
       toast(error.message || "Erro ao preparar a batalha.");
-      start.disabled = false; start.textContent = "Iniciar batalha →";
+      start.disabled=false; start.textContent="Iniciar batalha →";
     }
   }
 
   function makeFighter(card) {
-    const hp = Math.max(30, parseInt(card.hp, 10) || 60);
-    return { id: card.id, name: card.name, image: card.image, hp, maxHp: hp, attacks: (card.attacks || []).map(attack => ({ name: attack.name, damage: parseDamage(attack.damage), text: attack.text || "" })).slice(0,3) };
+    const hp=Number.parseInt(card?.hp,10);
+    if(!card?.id || !card?.name || !Number.isFinite(hp) || hp<=0 || !card.image) return null;
+    const attacks=(card.attacks||[]).map(attack=>({name:attack.name||"Ataque",damage:parseDamage(attack.damage),text:attack.text||"",cost:Array.isArray(attack.cost)?attack.cost:[]})).slice(0,4);
+    if(!attacks.length) attacks.push({name:"Investida",damage:20,text:"Ataque básico",cost:[]});
+    return {id:card.id,name:card.name,image:card.image,hp,maxHp:hp,attacks,weaknesses:card.weaknesses||[],resistances:card.resistances||[]};
   }
   function parseDamage(value) {
-    const match = String(value || "20").match(/\d+/);
-    return Math.max(10, Math.min(250, Number(match?.[0] || 20)));
+    const match=String(value||"20").replace(/,/g,"").match(/\d+/);
+    return Math.max(10,Math.min(250,Number(match?.[0]||20)));
   }
-  async function buildOpponent(playerCards, difficulty) {
-    const pool = ["Pikachu","Charizard","Blastoise","Venusaur","Gengar","Dragonite","Lucario","Mewtwo","Gardevoir","Greninja","Arcanine","Machamp"];
-    const chosen = pool.sort(() => Math.random() - .5).slice(0,3);
-    return chosen.map((name, index) => {
-      const hp = 70 + Math.floor(Math.random()*50);
-      return { id: "cpu-"+index, name, image: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/"+(Math.floor(Math.random()*150)+1)+".png", hp, maxHp: hp, attacks: [{ name: difficulty === "hard" ? "Golpe poderoso" : "Investida", damage: difficulty === "hard" ? 35 : 25 }] };
-    });
+  async function buildOpponent(playerCards,difficulty) {
+    try {
+      const result=await getCards({page:1,pageSize:100});
+      const available=(result.results||[]).filter(card=>card.hp&&card.image&&card.attacks?.length&&!playerCards.some(own=>own.id===card.id));
+      for(let i=available.length-1;i>0;i--) { const j=Math.floor(Math.random()*(i+1)); [available[i],available[j]]=[available[j],available[i]]; }
+      const realCards=available.map(makeFighter).filter(Boolean).slice(0,3);
+      if(realCards.length) return realCards;
+    } catch(error) { console.warn("Arena: usando adversários locais porque a API não respondeu.",error); }
+    return [
+      {id:"cpu-pikachu",name:"Pikachu",hp:60,maxHp:60,image:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/25.png",attacks:[{name:"Choque elétrico",damage:25,text:"",cost:[]}]},
+      {id:"cpu-charizard",name:"Charizard",hp:120,maxHp:120,image:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/6.png",attacks:[{name:"Chama",damage:40,text:"",cost:[]}]},
+      {id:"cpu-blastoise",name:"Blastoise",hp:110,maxHp:110,image:"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/9.png",attacks:[{name:"Jato d'água",damage:35,text:"",cost:[]}]}
+    ];
   }
   function drawBattle(state) {
-    const fighter = (card, active, side) => `
-      <div class="fighter ${active ? "active" : ""}"><div class="fighter-image"><img src="${esc(card.image)}" alt="${esc(card.name)}"></div><div class="fighter-info"><strong>${esc(card.name)}</strong><span>${card.hp} / ${card.maxHp} HP</span><div class="hp-track"><i style="width:${Math.max(0,card.hp/card.maxHp*100)}%"></i></div>${card.hp<=0 ? '<em>Nocauteado</em>' : ""}</div></div>`;
-    const p = state.player[state.playerActive], c = state.cpu[state.cpuActive];
-    const playerAlive = state.player.filter(x=>x.hp>0).length, cpuAlive = state.cpu.filter(x=>x.hp>0).length;
-    if (playerAlive === 0 || cpuAlive === 0) state.over = true;
-    const status = state.over ? (cpuAlive === 0 ? "VITÓRIA! Você venceu a batalha!" : "FIM DE JOGO — a IA venceu.") : state.turn === "player" ? "Seu turno: escolha um ataque." : "Turno da IA…";
-    content.innerHTML = `
+    const fighter=(card,active)=>`
+      <div class="fighter ${active?"active":""}"><div class="fighter-image"><img loading="lazy" src="${esc(card.image)}" alt="${esc(card.name)}"></div><div class="fighter-info"><strong>${esc(card.name)}</strong><span>${card.hp} / ${card.maxHp} HP</span><div class="hp-track"><i style="width:${Math.max(0,card.hp/card.maxHp*100)}%"></i></div>${card.hp<=0?'<em>Nocauteado</em>':""}</div></div>`;
+    const p=state.player[state.playerActive], c=state.cpu[state.cpuActive];
+    const playerAlive=state.player.filter(x=>x.hp>0).length, cpuAlive=state.cpu.filter(x=>x.hp>0).length;
+    if(playerAlive===0||cpuAlive===0) state.over=true;
+    const status=state.over?(cpuAlive===0?"VITÓRIA! Você venceu a batalha!":"FIM DE JOGO — a IA venceu."):state.turn==="player"?"Seu turno: escolha uma ação.":"Turno da IA…";
+    content.innerHTML=`
       <div class="battle-top"><div><span class="arena-pill">BATALHA EM ANDAMENTO</span><h2>${esc(status)}</h2></div><button class="btn btn-secondary btn-small" id="leaveBattle">Sair da partida</button></div>
       <div class="battle-board"><section class="battle-side opponent"><h3>Treinador rival · IA</h3><div class="fighter-grid">${state.cpu.map((card,i)=>fighter(card,i===state.cpuActive)).join("")}</div></section>
-      <div class="battle-center"><span>VS</span><small>Turno ${Math.floor((state.log.length+1)/2)}</small></div>
+      <div class="battle-center"><span>VS</span><small>Turno ${state.turnNumber||1}</small></div>
       <section class="battle-side"><h3>Seu time</h3><div class="fighter-grid">${state.player.map((card,i)=>fighter(card,i===state.playerActive)).join("")}</div></section></div>
-      <div class="arena-panel"><h3>Pokémon ativo: ${esc(p?.name || "—")}</h3><p>Adversário: ${esc(c?.name || "—")}</p><div class="attack-list">${(p?.attacks || []).map((attack,i)=>`<button class="attack-button" data-attack="${i}" ${state.over || state.turn!=="player" || !p || p.hp<=0 ? "disabled":""}><strong>${esc(attack.name)}</strong><span>${attack.damage} de dano</span></button>`).join("") || "<p>Esta carta não possui ataques cadastrados. Passe a vez.</p>"}</div><button class="btn btn-secondary" id="passTurn" ${state.over || state.turn!=="player" ? "disabled":""}>Passar turno</button></div>
-      <div class="arena-log"><h3>Histórico da partida</h3>${state.log.slice(-8).reverse().map(line=>`<p>${esc(line)}</p>`).join("")}</div>
-      ${state.over ? '<button class="btn btn-primary" id="newBattle">Nova batalha</button>' : ""}`;
-    $("#leaveBattle",content).onclick = renderCpuSetup;
+      <div class="arena-panel"><h3>Pokémon ativo: ${esc(p?.name||"—")}</h3><p>Adversário: ${esc(c?.name||"—")}</p>
+      <div class="attack-list">${(p?.attacks||[]).map((attack,i)=>`<button class="attack-button" data-attack="${i}" ${state.over||state.turn!=="player"||!p||p.hp<=0||!c?"disabled":""}><strong>${esc(attack.name)}</strong><span>${attack.damage} de dano</span>${attack.cost.length?`<small>${esc(attack.cost.join(" · "))}</small>`:""}${attack.text?`<small>${esc(attack.text)}</small>`:""}</button>`).join("")||"<p>Sem ataques disponíveis. Troque o Pokémon ativo.</p>"}</div>
+      <div class="deck-actions"><button class="btn btn-secondary" id="passTurn" ${state.over||state.turn!=="player"?"disabled":""}>Passar turno</button>${state.player.map((card,i)=>i!==state.playerActive&&card.hp>0?`<button class="btn btn-soft btn-small" data-switch="${i}" ${state.over||state.turn!=="player"?"disabled":""}>Trocar para ${esc(card.name)}</button>`:"").join("")}</div></div>
+      <div class="arena-log"><h3>Histórico da partida</h3>${state.log.slice(-10).reverse().map(line=>`<p>${esc(line)}</p>`).join("")}</div>
+      ${state.over?'<button class="btn btn-primary" id="newBattle">Nova batalha</button>':""}`;
+    $("#leaveBattle",content).onclick=renderCpuSetup;
     $("#newBattle",content)?.addEventListener("click",renderCpuSetup);
-    $("#passTurn",content).onclick = () => runCpuTurn(state);
-    content.querySelectorAll("[data-attack]").forEach(button => button.onclick = () => {
-      const attack = p.attacks[Number(button.dataset.attack)];
-      if (!attack || state.over || state.turn!=="player") return;
-      c.hp = Math.max(0,c.hp-attack.damage);
+    $("#passTurn",content).onclick=()=>runCpuTurn(state);
+    content.querySelectorAll("[data-switch]").forEach(button=>button.onclick=()=>{
+      if(state.turn!=="player"||state.over)return;
+      state.playerActive=Number(button.dataset.switch);
+      state.log.push(`Você trocou para ${state.player[state.playerActive].name}.`);
+      runCpuTurn(state);
+    });
+    content.querySelectorAll("[data-attack]").forEach(button=>button.onclick=()=>{
+      const attack=p?.attacks[Number(button.dataset.attack)];
+      if(!attack||!c||state.over||state.turn!=="player")return;
+      c.hp=Math.max(0,c.hp-attack.damage);
       state.log.push(`${p.name} usou ${attack.name}: ${attack.damage} de dano em ${c.name}.`);
-      if (c.hp<=0) { state.log.push(`${c.name} foi nocauteado!`); state.cpuActive = state.cpu.findIndex(x=>x.hp>0); }
-      if (state.cpu.every(x=>x.hp<=0)) { drawBattle(state); return; }
+      if(c.hp<=0){state.log.push(`${c.name} foi nocauteado!`);state.cpuActive=state.cpu.findIndex(x=>x.hp>0);}
+      if(state.cpu.every(x=>x.hp<=0)){drawBattle(state);return;}
       runCpuTurn(state);
     });
   }
   async function runCpuTurn(state) {
-    if (state.over) return;
-    state.turn = "cpu"; drawBattle(state); await sleep(650);
-    const target = state.player[state.playerActive];
-    const attacker = state.cpu[state.cpuActive];
-    if (!attacker || !target) return;
-    const attack = attacker.attacks[0];
-    const damage = Math.max(10, attack.damage + (state.difficulty==="hard" ? 10 : 0));
-    target.hp = Math.max(0,target.hp-damage);
+    if(state.over||state.turn==="cpu")return;
+    state.turn="cpu";drawBattle(state);await sleep(450);
+    const target=state.player[state.playerActive], attacker=state.cpu[state.cpuActive];
+    if(!attacker||!target){state.turn="player";drawBattle(state);return;}
+    const attack=attacker.attacks.reduce((best,current)=>current.damage>best.damage?current:best,attacker.attacks[0]);
+    const damage=Math.max(10,attack.damage+(state.difficulty==="hard"?10:0));
+    target.hp=Math.max(0,target.hp-damage);
     state.log.push(`IA: ${attacker.name} usou ${attack.name} e causou ${damage} de dano.`);
-    if (target.hp<=0) {
+    if(target.hp<=0){
       state.log.push(`${target.name} foi nocauteado!`);
-      state.playerActive = state.player.findIndex(x=>x.hp>0);
+      const next=state.player.findIndex(x=>x.hp>0);
+      if(next>=0){state.playerActive=next;state.log.push(`${state.player[next].name} entrou em campo.`);}
     }
-    state.turn = "player";
-    drawBattle(state);
+    if(state.cpu.every(x=>x.hp<=0)||state.player.every(x=>x.hp<=0))state.over=true;
+    state.turnNumber=(state.turnNumber||1)+1;
+    state.turn="player";drawBattle(state);
   }
 }
