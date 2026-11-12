@@ -206,7 +206,7 @@ function decks() {
       } catch(error) { grid.innerHTML=empty(error.message||"Não foi possível carregar o catálogo."); }
       finally { loadingCards=false; }
     }
-    root.addEventListener("click",event=>{
+    root.onclick=event=>{
       const button=event.target.closest("[data-picker-add]");
       if(!button||button.disabled)return;
       const decks=storage.getDecks(), deck=decks.find(item=>item.id===deckId);
@@ -218,13 +218,13 @@ function decks() {
       button.disabled=true; button.textContent="✓ Adicionada";
       toast(`${button.dataset.cardName} adicionada ao baralho!`);
       setTimeout(()=>{if(button.isConnected){button.disabled=false;button.textContent="＋ Adicionar ao deck";}},900);
-    });
+    };
     await loadCards();
   }
-  app.addEventListener("click",event=>{
+  $("#deckList").onclick=event=>{
     const button=event.target.closest("[data-edit-deck]");
     if(button) openPicker(button.dataset.editDeck);
-  });
+  };
 }
 
 function profile() {
