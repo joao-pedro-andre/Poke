@@ -229,7 +229,8 @@ function decks() {
       if(totalCards>=60)return toast("O baralho atingiu o limite de 60 cartas.");
       const existing=deck.cards.find(card=>card.id===selectedCard.id);
       const isBasicEnergy=selectedCard.supertype==="Energy" && (selectedCard.subtypes||[]).includes("Basic");
-      if(existing && existing.qty>=4 && !isBasicEnergy)return toast("O limite é de 4 cópias desta carta.");
+      const copiesByName=deck.cards.filter(card=>String(card.name).toLowerCase()===selectedCard.name.toLowerCase()).reduce((sum,card)=>sum+(Number(card.qty)||0),0);
+      if(copiesByName>=4 && !isBasicEnergy)return toast("O limite é de 4 cópias por nome de carta.");
       if(existing) existing.qty=(Number(existing.qty)||0)+1;
       else deck.cards.push({...selectedCard,qty:1});
       storage.saveDecks(decks); draw();
