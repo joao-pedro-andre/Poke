@@ -169,18 +169,62 @@ function market() {
 
 function decks() {
   setPage("Meus baralhos");
-  const list = storage.getDecks();
-  app.innerHTML = header("CONSTRUÇÃO", "Meus baralhos", "Monte listas e acompanhe a quantidade de cartas de cada deck.", '<button class="btn btn-primary" id="newDeck">＋ Novo baralho</button>') +
-    `<div class="notice">Construtor de listas em modo local. A validação de regras oficiais e legalidade de torneios ainda não está integrada.</div><div id="deckList" class="market-list"></div>`;
+  app.innerHTML = header("CONSTRUÇÃO", "Meus baralhos", "Monte seus decks escolhendo cartas em um catálogo visual.", '<button class="btn btn-primary" id="newDeck">＋ Novo baralho</button>') +
+    `<div class="notice">Adicione cartas pelo catálogo visual. As listas ficam salvas neste navegador.</div><div id="deckList" class="market-list"></div><div id="deckPickerRoot"></div>`;
   const draw = () => {
     const decks = storage.getDecks();
-    $("#deckList").innerHTML = decks.map(deck => `<article class="panel"><h3>${esc(deck.name)}</h3><p>${deck.cards.length} tipos de cartas · ${deck.cards.reduce((sum, card) => sum + card.qty, 0)} cartas</p><button class="btn btn-soft btn-small" data-edit-deck="${esc(deck.id)}">Adicionar carta</button> <button class="btn btn-danger btn-small" data-delete-deck="${esc(deck.id)}">Excluir</button><div>${deck.cards.map(card => `<p>${esc(card.name)} × ${card.qty} <button class="page-btn" data-deck-remove="${esc(deck.id)}" data-card-id="${esc(card.id)}">−</button></p>`).join("")}</div></article>`).join("") || empty("Você ainda não criou um baralho.");
+    $("#deckList").innerHTML = decks.map(deck => `<article class="panel deck-panel"><div class="deck-heading"><div><h3>${esc(deck.name)}</h3><p>${deck.cards.length} tipos de cartas · ${deck.cards.reduce((sum, card) => sum + (Number(card.qty)||0), 0)} cartas</p></div><div class="deck-actions"><button class="btn btn-soft btn-small" data-edit-deck="${esc(deck.id)}">＋ Adicionar carta</button> <button class="btn btn-danger btn-small" data-delete-deck="${esc(deck.id)}">Excluir</button></div></div><div class="deck-card-list">${deck.cards.map(card => `<div class="deck-card-row"><span>${esc(card.name)} <b>× ${card.qty}</b></span><button class="page-btn" data-deck-remove="${esc(deck.id)}" data-card-id="${esc(card.id)}" title="Remover uma cópia">−</button></div>`).join("") || '<p class="muted">Este baralho ainda não tem cartas. Clique em “Adicionar carta” para começar.</p>'}</div></article>`).join("") || empty("Você ainda não criou um baralho.");
   };
   draw();
   $("#newDeck").onclick = () => {
     const name = prompt("Nome do baralho:")?.trim(); if (!name) return;
     const decks = storage.getDecks(); decks.push({ id: crypto.randomUUID(), name, cards: [] }); storage.saveDecks(decks); draw();
   };
+
+  async function openPicker(deckId) {
+    let page = 1, query = "", loadingCards = false, total = 0;
+    const root = $("#deckPickerRoot");
+    root.innerHTML = `<div class="deck-picker-backdrop" id="deckPickerBackdrop"><section class="deck-picker" role="dialog" aria-modal="true" aria-label="Escolher cartas para o baralho"><div class="deck-picker-header"><div><span class="eyebrow">CATÁLOGO TCG</span><h2>Adicionar cartas</h2><p>Escolha visualmente as cartas para seu baralho.</p></div><button class="deck-picker-close" id="closeDeckPicker" aria-label="Fechar">×</button></div><div class="deck-picker-search"><input class="field" id="deckCardSearch" placeholder="Pesquisar por nome do Pokémon ou carta"><button class="btn btn-primary" id="deckCardSearchBtn">Buscar</button></div><div class="deck-picker-count" id="deckPickerCount">Carregando catálogo…</div><div class="deck-picker-grid" id="deckPickerGrid"></div><div class="deck-picker-pagination"><button class="page-btn" id="deckPickerPrev">← Anterior</button><span id="deckPickerPage">Página 1</span><button class="page-btn" id="deckPickerNext">Próxima →</button></div></section></div>`;
+    const close = () => { root.innerHTML = ""; };
+    $("#closeDeckPicker",root).onclick = close;
+    $("#deckPickerBackdrop",root).onclick = event => { if (event.target.id === "deckPickerBackdrop") close(); };
+    $("#deckCardSearchBtn",root).onclick = () => { query = $("#deckCardSearch",root).value.trim(); page=1; loadCards(); };
+    $("#deckCardSearch",root).onkeydown = event => { if(event.key==="Enter") $("#deckCardSearchBtn",root).click(); };
+    $("#deckPickerPrev",root).onclick = () => { if(page>1){page--;loadCards();} };
+    $("#deckPickerNext",root).onclick = () => { if(page*12<total){page++;loadCards();} };
+    async function loadCards() {
+      if(loadingCards) return; loadingCards=true;
+      const grid=$("#deckPickerGrid",root); grid.innerHTML='<div class="picker-loading">Carregando cartas…</div>';
+      try {
+        const result=await getCards({page,pageSize:12,q:query});
+        total=Number(result.total)||0;
+        $("#deckPickerCount",root).textContent=`${total.toLocaleString("pt-BR")} cartas encontradas`;
+        $("#deckPickerPage",root).textContent=`Página ${page}`;
+        $("#deckPickerPrev",root).disabled=page<=1;
+        $("#deckPickerNext",root).disabled=page*12>=total;
+        grid.innerHTML=result.results.map(card=>`<article class="picker-card"><div class="picker-card-image"><img loading="lazy" src="${esc(card.image)}" alt="${esc(card.name)}"></div><div class="picker-card-info"><strong>${esc(card.name)}</strong><span>${esc(card.set)}</span><small>${esc(card.rarity)}</small><button class="btn btn-soft btn-small" data-picker-add="${esc(card.id)}" data-card-name="${esc(card.name)}">＋ Adicionar ao deck</button></div></article>`).join("")||empty("Nenhuma carta encontrada. Tente outra pesquisa.");
+      } catch(error) { grid.innerHTML=empty(error.message||"Não foi possível carregar o catálogo."); }
+      finally { loadingCards=false; }
+    }
+    root.addEventListener("click",event=>{
+      const button=event.target.closest("[data-picker-add]");
+      if(!button||button.disabled)return;
+      const decks=storage.getDecks(), deck=decks.find(item=>item.id===deckId);
+      if(!deck)return toast("Este baralho não foi encontrado.");
+      const existing=deck.cards.find(card=>card.id===button.dataset.pickerAdd);
+      if(existing) existing.qty=(Number(existing.qty)||0)+1;
+      else deck.cards.push({id:button.dataset.pickerAdd,name:button.dataset.cardName,qty:1});
+      storage.saveDecks(decks); draw();
+      button.disabled=true; button.textContent="✓ Adicionada";
+      toast(`${button.dataset.cardName} adicionada ao baralho!`);
+      setTimeout(()=>{if(button.isConnected){button.disabled=false;button.textContent="＋ Adicionar ao deck";}},900);
+    });
+    await loadCards();
+  }
+  app.addEventListener("click",event=>{
+    const button=event.target.closest("[data-edit-deck]");
+    if(button) openPicker(button.dataset.editDeck);
+  });
 }
 
 function profile() {
@@ -256,19 +300,6 @@ document.addEventListener("click", async event => {
   if (deleteListing) { storage.saveListings(storage.getListings().filter(item => item.id !== deleteListing.dataset.deleteListing)); market(); return; }
   const deleteDeck = event.target.closest("[data-delete-deck]");
   if (deleteDeck) { storage.saveDecks(storage.getDecks().filter(deck => deck.id !== deleteDeck.dataset.deleteDeck)); decks(); return; }
-  const editDeck = event.target.closest("[data-edit-deck]");
-  if (editDeck) {
-    const query = prompt("Nome da carta para adicionar ao baralho:")?.trim(); if (!query) return;
-    try {
-      const result = await getCards({ pageSize: 5, q: query });
-      if (!result.results.length) return toast("Carta não encontrada.");
-      const chosen = result.results[0], items = storage.getDecks(), deck = items.find(item => item.id === editDeck.dataset.editDeck);
-      const existing = deck.cards.find(card => card.id === chosen.id);
-      if (existing) existing.qty++; else deck.cards.push({ id: chosen.id, name: chosen.name, qty: 1 });
-      storage.saveDecks(items); decks(); toast(`${chosen.name} adicionado.`);
-    } catch (error) { toast(error.message); }
-    return;
-  }
   const removeDeckCard = event.target.closest("[data-deck-remove]");
   if (removeDeckCard) {
     const items = storage.getDecks(), deck = items.find(item => item.id === removeDeckCard.dataset.deckRemove);
