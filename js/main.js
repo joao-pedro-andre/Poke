@@ -182,41 +182,59 @@ function decks() {
   };
 
   async function openPicker(deckId) {
-    let page = 1, query = "", loadingCards = false, total = 0;
+    let page = 1, query = "", total = 0, requestId = 0, searchTimer;
+    const pickerCards = new Map();
     const root = $("#deckPickerRoot");
     root.innerHTML = `<div class="deck-picker-backdrop" id="deckPickerBackdrop"><section class="deck-picker" role="dialog" aria-modal="true" aria-label="Escolher cartas para o baralho"><div class="deck-picker-header"><div><span class="eyebrow">CATÁLOGO TCG</span><h2>Adicionar cartas</h2><p>Escolha visualmente as cartas para seu baralho.</p></div><button class="deck-picker-close" id="closeDeckPicker" aria-label="Fechar">×</button></div><div class="deck-picker-search"><input class="field" id="deckCardSearch" placeholder="Pesquisar por nome do Pokémon ou carta"><button class="btn btn-primary" id="deckCardSearchBtn">Buscar</button></div><div class="deck-picker-count" id="deckPickerCount">Carregando catálogo…</div><div class="deck-picker-grid" id="deckPickerGrid"></div><div class="deck-picker-pagination"><button class="page-btn" id="deckPickerPrev">← Anterior</button><span id="deckPickerPage">Página 1</span><button class="page-btn" id="deckPickerNext">Próxima →</button></div></section></div>`;
     const close = () => { clearTimeout(searchTimer); requestId++; root.innerHTML = ""; };
     $("#closeDeckPicker",root).onclick = close;
     $("#deckPickerBackdrop",root).onclick = event => { if (event.target.id === "deckPickerBackdrop") close(); };
-    $("#deckCardSearchBtn",root).onclick = () => { query = $("#deckCardSearch",root).value.trim(); page=1; loadCards(); };
-    $("#deckCardSearch",root).onkeydown = event => { if(event.key==="Enter") $("#deckCardSearchBtn",root).click(); };
+    const runSearch = () => { clearTimeout(searchTimer); query = $("#deckCardSearch",root).value.trim(); page=1; loadCards(); };
+    $("#deckCardSearchBtn",root).onclick = runSearch;
+    $("#deckCardSearch",root).onkeydown = event => { if(event.key==="Enter") runSearch(); };
+    $("#deckCardSearch",root).oninput = () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => { query = $("#deckCardSearch",root).value.trim(); page=1; loadCards(); }, 450);
+    };
     $("#deckPickerPrev",root).onclick = () => { if(page>1){page--;loadCards();} };
     $("#deckPickerNext",root).onclick = () => { if(page*12<total){page++;loadCards();} };
     async function loadCards() {
-      if(loadingCards) return; loadingCards=true;
-      const grid=$("#deckPickerGrid",root); grid.innerHTML='<div class="picker-loading">Carregando cartas…</div>';
+      const currentRequest = ++requestId;
+      const grid=$("#deckPickerGrid",root);
+      grid.innerHTML='<div class="picker-loading">Carregando cartas…</div>';
       try {
         const result=await getCards({page,pageSize:12,q:query});
+        if(currentRequest!==requestId || !root.isConnected) return;
         total=Number(result.total)||0;
+        pickerCards.clear();
+        result.results.forEach(card=>pickerCards.set(card.id,card));
         $("#deckPickerCount",root).textContent=`${total.toLocaleString("pt-BR")} cartas encontradas`;
         $("#deckPickerPage",root).textContent=`Página ${page}`;
         $("#deckPickerPrev",root).disabled=page<=1;
         $("#deckPickerNext",root).disabled=page*12>=total;
-        grid.innerHTML=result.results.map(card=>`<article class="picker-card"><div class="picker-card-image"><img loading="lazy" src="${esc(card.image)}" alt="${esc(card.name)}"></div><div class="picker-card-info"><strong>${esc(card.name)}</strong><span>${esc(card.set)}</span><small>${esc(card.rarity)}</small><button class="btn btn-soft btn-small" data-picker-add="${esc(card.id)}" data-card-name="${esc(card.name)}">＋ Adicionar ao deck</button></div></article>`).join("")||empty("Nenhuma carta encontrada. Tente outra pesquisa.");
-      } catch(error) { grid.innerHTML=empty(error.message||"Não foi possível carregar o catálogo."); }
-      finally { loadingCards=false; }
+        grid.innerHTML=result.results.map(card=>`<article class="picker-card"><div class="picker-card-image"><img loading="lazy" src="${esc(card.image)}" alt="${esc(card.name)}"></div><div class="picker-card-info"><strong>${esc(card.name)}</strong><span>${esc(card.set)}</span><small>${esc(card.rarity)}</small><button class="btn btn-soft btn-small" data-picker-add="${esc(card.id)}">＋ Adicionar ao deck</button></div></article>`).join("")||empty("Nenhuma carta encontrada. Tente outra pesquisa.");
+      } catch(error) {
+        if(currentRequest===requestId && root.isConnected) grid.innerHTML=empty(error.message||"Não foi possível carregar o catálogo.") + '<button class="btn btn-secondary" id="retryDeckPicker">Tentar novamente</button>';
+      }
+      $("#retryDeckPicker",root)?.addEventListener("click",loadCards,{once:true});
     }
     root.onclick=event=>{
       const button=event.target.closest("[data-picker-add]");
       if(!button||button.disabled)return;
       const decks=storage.getDecks(), deck=decks.find(item=>item.id===deckId);
       if(!deck)return toast("Este baralho não foi encontrado.");
-      const existing=deck.cards.find(card=>card.id===button.dataset.pickerAdd);
+      const selectedCard=pickerCards.get(button.dataset.pickerAdd);
+      if(!selectedCard)return toast("Não consegui recuperar os dados desta carta. Atualize o catálogo.");
+      const totalCards=deck.cards.reduce((sum,card)=>sum+(Number(card.qty)||0),0);
+      if(totalCards>=60)return toast("O baralho atingiu o limite de 60 cartas.");
+      const existing=deck.cards.find(card=>card.id===selectedCard.id);
+      const isBasicEnergy=selectedCard.supertype==="Energy" && (selectedCard.subtypes||[]).includes("Basic");
+      if(existing && existing.qty>=4 && !isBasicEnergy)return toast("O limite é de 4 cópias desta carta.");
       if(existing) existing.qty=(Number(existing.qty)||0)+1;
-      else deck.cards.push({id:button.dataset.pickerAdd,name:button.dataset.cardName,qty:1});
+      else deck.cards.push({...selectedCard,qty:1});
       storage.saveDecks(decks); draw();
       button.disabled=true; button.textContent="✓ Adicionada";
-      toast(`${button.dataset.cardName} adicionada ao baralho!`);
+      toast(`${selectedCard.name} adicionada ao baralho!`);
       setTimeout(()=>{if(button.isConnected){button.disabled=false;button.textContent="＋ Adicionar ao deck";}},900);
     };
     await loadCards();
