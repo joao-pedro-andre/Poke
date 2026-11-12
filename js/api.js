@@ -1,39 +1,54 @@
 const POKE = "https://pokeapi.co/api/v2";
 const TCG = "https://api.pokemontcg.io/v2";
 
-async function request(url, attempts = 2) {
-  let lastError;
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
-    try {
-      const response = await fetch(url, {
-        signal: controller.signal,
-        headers: { Accept: "application/json" }
-      });
-      if (!response.ok) {
-        const error = new Error(
-          response.status === 429
-            ? "Muitas consultas em pouco tempo. Aguarde alguns segundos e tente novamente."
-            : `Falha na API (${response.status})`
-        );
-        if (response.status < 500 && response.status !== 429) throw error;
-        lastError = error;
-      } else {
-        return await response.json();
+const responseCache = new Map();
+const pendingRequests = new Map();
+const CACHE_TTL = 5 * 60 * 1000;
+
+async function request(url, attempts = 3) {
+  const cached = responseCache.get(url);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  if (pendingRequests.has(url)) return pendingRequests.get(url);
+
+  const task = (async () => {
+    let lastError;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      try {
+        const response = await fetch(url, { signal: controller.signal, headers: { Accept: "application/json" } });
+        if (!response.ok) {
+          const error = new Error(response.status === 429
+            ? "A API limitou temporariamente as consultas. Aguarde alguns segundos e tente novamente."
+            : response.status >= 500
+              ? "O servidor de cartas está temporariamente indisponível."
+              : `Não foi possível localizar os dados (HTTP ${response.status}).`);
+          error.status = response.status;
+          if (response.status < 500 && response.status !== 429) throw error;
+          lastError = error;
+          const retryAfter = Number(response.headers.get("Retry-After"));
+          const delay = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, 8000) : Math.min(700 * (2 ** attempt), 4000);
+          if (attempt + 1 < attempts) await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        const data = await response.json();
+        responseCache.set(url, { data, expiresAt: Date.now() + CACHE_TTL });
+        if (responseCache.size > 180) responseCache.delete(responseCache.keys().next().value);
+        return data;
+      } catch (error) {
+        if (Number.isInteger(error.status) && error.status < 500 && error.status !== 429) throw error;
+        lastError = error.name === "AbortError" ? new Error("A API demorou para responder. Tente novamente.") : error;
+        if (attempt + 1 < attempts) await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+      } finally {
+        clearTimeout(timeout);
       }
-    } catch (error) {
-      lastError = error.name === "AbortError"
-        ? new Error("A consulta demorou demais. Verifique sua conexão e tente novamente.")
-        : error;
-    } finally {
-      clearTimeout(timeout);
     }
-    if (attempt + 1 < attempts) {
-      await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
-    }
-  }
-  throw lastError || new Error("Não foi possível consultar a API.");
+    throw lastError || new Error("Não foi possível consultar a API.");
+  })();
+
+  pendingRequests.set(url, task);
+  try { return await task; }
+  finally { pendingRequests.delete(url); }
 }
 
 async function mapWithConcurrency(items, limit, mapper) {
@@ -120,6 +135,8 @@ function normalizeCard(card) {
     image: card.images?.large || card.images?.small,
     artist: card.artist || "—",
     releaseDate: card.set?.releaseDate || "—",
+    supertype: card.supertype || "",
+    subtypes: card.subtypes || [],
     attacks: card.attacks || [],
     weaknesses: card.weaknesses || [],
     resistances: card.resistances || [],
