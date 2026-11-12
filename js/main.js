@@ -185,7 +185,7 @@ function decks() {
     let page = 1, query = "", loadingCards = false, total = 0;
     const root = $("#deckPickerRoot");
     root.innerHTML = `<div class="deck-picker-backdrop" id="deckPickerBackdrop"><section class="deck-picker" role="dialog" aria-modal="true" aria-label="Escolher cartas para o baralho"><div class="deck-picker-header"><div><span class="eyebrow">CATÁLOGO TCG</span><h2>Adicionar cartas</h2><p>Escolha visualmente as cartas para seu baralho.</p></div><button class="deck-picker-close" id="closeDeckPicker" aria-label="Fechar">×</button></div><div class="deck-picker-search"><input class="field" id="deckCardSearch" placeholder="Pesquisar por nome do Pokémon ou carta"><button class="btn btn-primary" id="deckCardSearchBtn">Buscar</button></div><div class="deck-picker-count" id="deckPickerCount">Carregando catálogo…</div><div class="deck-picker-grid" id="deckPickerGrid"></div><div class="deck-picker-pagination"><button class="page-btn" id="deckPickerPrev">← Anterior</button><span id="deckPickerPage">Página 1</span><button class="page-btn" id="deckPickerNext">Próxima →</button></div></section></div>`;
-    const close = () => { root.innerHTML = ""; };
+    const close = () => { clearTimeout(searchTimer); requestId++; root.innerHTML = ""; };
     $("#closeDeckPicker",root).onclick = close;
     $("#deckPickerBackdrop",root).onclick = event => { if (event.target.id === "deckPickerBackdrop") close(); };
     $("#deckCardSearchBtn",root).onclick = () => { query = $("#deckCardSearch",root).value.trim(); page=1; loadCards(); };
